@@ -121,6 +121,32 @@ curl -H "Authorization: Bearer <token>" http://192.168.0.14:9470/today
 curl -H "Authorization: Bearer <token>" "http://192.168.0.14:9470/dashboard?days=30"
 ```
 
+## Claude on the TV (v2)
+
+The TV never runs Claude. A Claude Code session lives on the mini in `claude-on-tv/` (its own CLAUDE.md carries the TV quirks, the device rule and what it may and may not do), started by `claude-on-tv/start.sh` inside tmux as `cc-claude-on-tv` with Remote Control on, so Amba's phone attaches to the same session. The launcher's Claude tile (and the remote's mic keys) open the Claude screen built to Claude.dc.html.
+
+The bridge is part of the mini server (same port, same token):
+
+- The session's hooks (`claude-on-tv/.claude/settings.json` running `bridge_hook.py`) post one event per prompt (`prompt`), per tool call (`tool_start` and `tool_done`, with one-line markers such as "tv · switched to HDMI 1" or "mini · today's numbers") and per answer (`text`, the whole message at Stop; the TV reveals it word by word at 55 ms a word). Session start and end post `status`.
+- `GET /bridge/events?since=N&wait=25` is what the TV long-polls while the Claude screen is open; it also carries the status (live, working, listening, offline) and whether the tmux session exists.
+- `POST /bridge/prompt` types a prompt into the tmux session with `tmux send-keys` and presses Enter, so a prompt from the TV is no different from one typed at the keyboard. It answers 503 when the session is not running.
+- `announce` is accepted as an event type and shown on the Claude screen for now; the home announcement (chime, spoken message, overlay over the PS5 picture) is being designed and will ride the same event.
+
+The remote's microphone needs Bluetooth pairing before voice can work (the remote is infrared only until then); the mic keys and the "Hold mic" pill show the listening state and then point to the phone.
+
+### The Home bounce guard
+
+While the PS5 is on, a Home press is undone by the TV within about two seconds (see "The PS5 bounce (CEC)"). The launcher logs the whole sequence under the tag `MkBounce` and reacts according to a global setting that can be changed over adb without a rebuild:
+
+```
+settings put global mk_bounce_strategy reassert        # default: come back once when stopped within 4.5 s of Home with no user action
+settings put global mk_bounce_strategy reassert:3      # up to three times
+settings put global mk_bounce_strategy route:<input id>  # on Home, route the TV to that input first so CEC sends a Routing Change, then come back
+settings put global mk_bounce_strategy off
+```
+
+Every strategy stays quiet when the launcher handed the screen over itself (the PS5 tile, an app, Settings).
+
 ## Removing the apps Amba does not need, and restoring them
 
 Removed for user 0 only (`pm uninstall --user 0 <package>`), which keeps the APKs on the system partition: `com.google.android.tvlauncher`, `com.google.android.tvrecommendations`, `com.google.android.youtube.tv.recommendations`, `com.google.android.backdrop`, `com.google.android.leanbacklauncher.partnercustomizer`, `com.google.android.videos`, `com.google.android.youtube.tvmusic`, `com.google.android.play.games`, `com.Smartdevice.emanual`.

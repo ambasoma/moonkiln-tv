@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import com.moonkiln.tv.ambient.AmbientScreen
 import com.moonkiln.tv.analytics.AnalyticsScreen
 import com.moonkiln.tv.analytics.AnalyticsState
+import com.moonkiln.tv.claude.ClaudeFocus
+import com.moonkiln.tv.claude.ClaudeScreen
 import com.moonkiln.tv.home.HomeActions
 import com.moonkiln.tv.home.HomeFocus
 import com.moonkiln.tv.home.HomeScreen
@@ -46,7 +48,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-enum class Screen { Home, Analytics, Ambient, Inputs }
+enum class Screen { Home, Analytics, Ambient, Inputs, Claude }
 
 class MainActivity : ComponentActivity() {
     private val app get() = application as App
@@ -59,10 +61,72 @@ class MainActivity : ComponentActivity() {
     private var inputs by mutableStateOf<List<TvInput>>(emptyList())
     private val analytics = AnalyticsState()
     private val homeFocus = HomeFocus()
+    private val claudeFocus = ClaudeFocus()
+
+    // The Home bounce. While the PS5 is on, the TV's HDMI service answers a Home press by telling CEC the
+    // TV is the active source, the PS5 replies with its own Active Source, and the service drags Live TV
+    // back over the launcher about two seconds later. Strategy lives in a global setting so it can be
+    // changed over adb during a test without a rebuild:
+    //   settings put global mk_bounce_strategy reassert      (default) come back once, up to N times
+    //   settings put global mk_bounce_strategy reassert:3
+    //   settings put global mk_bounce_strategy route:<input id>  on Home, route the TV to that input first
+    //   settings put global mk_bounce_strategy off
+    private var lastHomeAt = 0L
+    private var userLeftAt = 0L
+    private var reasserts = 0
+    private var routedAt = 0L
+
+    private fun strategy(): String =
+        android.provider.Settings.Global.getString(contentResolver, "mk_bounce_strategy")?.trim()?.ifEmpty { null } ?: "reassert"
+
+    private fun maxReasserts(): Int {
+        val s = strategy()
+        return if (s.startsWith("reassert")) s.substringAfter(':', "1").toIntOrNull() ?: 1 else 0
+    }
+
+    private fun bounceLog(msg: String) = android.util.Log.i("MkBounce", msg)
+
+    private fun markUserLeft() { userLeftAt = System.currentTimeMillis() }
+
+    private fun comeBack(delayMs: Long) {
+        window.decorView.postDelayed({
+            bounceLog("reassert ${reasserts + 1}/${maxReasserts()} after a bounce")
+            reasserts++
+            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        }, delayMs)
+    }
+
+    // The route strategy: before the launcher shows, send the TV to another input so CEC routes away from
+    // the PS5 with a Routing Change it understands, then come back. Only used when the setting asks for it.
+    private fun routeAwayIfAsked(): Boolean {
+        val s = strategy()
+        if (!s.startsWith("route:")) return false
+        val now = System.currentTimeMillis()
+        if (now - routedAt < 10_000 || app.inputs.ps5.value != com.moonkiln.tv.tv.Power.ON) return false
+        routedAt = now
+        val target = s.substringAfter("route:")
+        bounceLog("route away via $target before showing home")
+        app.inputs.switchTo(target)
+        comeBack(1500)
+        return true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val now = System.currentTimeMillis()
+        val sinceHome = now - lastHomeAt
+        val userLeft = now - userLeftAt < 6_000
+        val resumed = try { (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager).appTasks.size } catch (_: Exception) { -1 }
+        bounceLog("stopped ${sinceHome} ms after home, userLeft=$userLeft, reasserts=$reasserts, strategy=${strategy()}, tasks=$resumed")
+        if (!userLeft && sinceHome in 0..4_500 && reasserts < maxReasserts()) {
+            comeBack(1200)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent?.action == Intent.ACTION_ALL_APPS) screen = Screen.Ambient
+        lastHomeAt = System.currentTimeMillis()
         setContent {
             KilnRoot {
                 val today by app.today.state.collectAsState()
@@ -110,6 +174,7 @@ class MainActivity : ComponentActivity() {
                                 LaunchedEffect(Unit) { inputs = app.inputs.passthroughInputs() }
                                 InputsScreen(inputs) { input -> switchInput(input.id) }
                             }
+                            Screen.Claude -> ClaudeScreen(app.bridge, claudeFocus) { go(Screen.Home) }
                         }
                     }
                     if (veil.value > 0f) {
@@ -127,8 +192,9 @@ class MainActivity : ComponentActivity() {
         override fun openAnalytics() = go(Screen.Analytics)
         override fun openAmbient() = go(Screen.Ambient)
         override fun openInputs() = go(Screen.Inputs)
-        override fun openSettings() { opening = "Settings"; openSettings(this@MainActivity) }
-        override fun openApp(app: LaunchableApp) { opening = app.label; launch(this@MainActivity, app.component) }
+        override fun openSettings() { opening = "Settings"; markUserLeft(); openSettings(this@MainActivity) }
+        override fun openClaude() = go(Screen.Claude)
+        override fun openApp(app: LaunchableApp) { opening = app.label; markUserLeft(); launch(this@MainActivity, app.component) }
     }
 
     private fun go(target: Screen) {
@@ -142,6 +208,7 @@ class MainActivity : ComponentActivity() {
     private fun switchInput(id: String) {
         if (switching) return
         switching = true
+        markUserLeft()
         window.decorView.postDelayed({
             app.inputs.switchTo(id)
             window.decorView.postDelayed({ switching = false }, 1500)
@@ -154,6 +221,10 @@ class MainActivity : ComponentActivity() {
         // Home key: back to the home screen. Long press Home arrives as ALL_APPS: ambient.
         screen = if (intent.action == Intent.ACTION_ALL_APPS) Screen.Ambient else Screen.Home
         switching = false
+        lastHomeAt = System.currentTimeMillis()
+        reasserts = 0
+        bounceLog("home intent ${intent.action}, ps5=${app.inputs.ps5.value}")
+        routeAwayIfAsked()
     }
 
     override fun onResume() {
@@ -172,6 +243,13 @@ class MainActivity : ComponentActivity() {
         }
         when (keyCode) {
             KeyEvent.KEYCODE_TV_INPUT -> { switchInput(PS5_INPUT_ID); return true }
+            // The remote's mic key opens Claude. Until the remote is paired over Bluetooth the mic itself
+            // is a stub: the screen shows listening, then says to talk from the phone.
+            KeyEvent.KEYCODE_SEARCH, KeyEvent.KEYCODE_ASSIST, KeyEvent.KEYCODE_VOICE_ASSIST -> {
+                if (screen != Screen.Claude) go(Screen.Claude)
+                app.bridge.listeningStub()
+                return true
+            }
             KeyEvent.KEYCODE_BACK -> {
                 if (screen == Screen.Analytics && analytics.collapse()) return true
                 if (screen != Screen.Home) { go(Screen.Home); return true }

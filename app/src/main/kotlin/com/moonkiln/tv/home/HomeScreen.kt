@@ -75,6 +75,7 @@ interface HomeActions {
     fun openAmbient()
     fun openInputs()
     fun openSettings()
+    fun openClaude()
     fun openApp(app: LaunchableApp)
 }
 
@@ -96,7 +97,7 @@ fun HomeScreen(
     actions: HomeActions,
 ) {
     val now by rememberClock()
-    val builtIns = 3
+    val builtIns = 4
     val tileCount = builtIns + apps.size
     val tileRequesters = focus.apps.take(tileCount.coerceAtMost(focus.apps.size))
     val cardDown = tileRequesters.getOrNull(4) ?: tileRequesters.lastOrNull()
@@ -127,6 +128,7 @@ fun HomeScreen(
                 AppTile("Ambient", painterResource(R.drawable.ic_ambient), null, tileRequesters.getOrNull(0), upFor(0), left = null, right = tileRequesters.getOrNull(1)) { actions.openAmbient() }
                 AppTile("Inputs", painterResource(R.drawable.ic_inputs), null, tileRequesters.getOrNull(1), upFor(1), left = tileRequesters.getOrNull(0), right = tileRequesters.getOrNull(2)) { actions.openInputs() }
                 AppTile("Settings", painterResource(R.drawable.ic_settings), null, tileRequesters.getOrNull(2), upFor(2), left = tileRequesters.getOrNull(1), right = tileRequesters.getOrNull(3)) { actions.openSettings() }
+                AppTile("Claude", painterResource(R.drawable.ic_claude), null, tileRequesters.getOrNull(3), upFor(3), left = tileRequesters.getOrNull(2), right = tileRequesters.getOrNull(4), tint = false) { actions.openClaude() }
                 apps.forEachIndexed { i, app ->
                     val idx = builtIns + i
                     AppTile(app.label, null, app.icon, tileRequesters.getOrNull(idx), upFor(idx), left = tileRequesters.getOrNull(idx - 1), right = tileRequesters.getOrNull(idx + 1)) { actions.openApp(app) }
@@ -361,6 +363,7 @@ private fun AppTile(
     up: FocusRequester,
     left: FocusRequester?,
     right: FocusRequester?,
+    tint: Boolean = true,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -381,8 +384,8 @@ private fun AppTile(
                 contentAlignment = Alignment.Center,
             ) {
                 if (icon != null) {
-                    Image(icon, contentDescription = null, modifier = Modifier.size(34.dp),
-                        colorFilter = if (fill > 0.5f) androidx.compose.ui.graphics.ColorFilter.tint(Kiln.ink) else null)
+                    Image(icon, contentDescription = null, modifier = Modifier.size(if (tint) 34.dp else 30.dp),
+                        colorFilter = if (fill > 0.5f && tint) androidx.compose.ui.graphics.ColorFilter.tint(Kiln.ink) else null)
                 } else if (bitmap != null) {
                     Image(bitmap, contentDescription = null, modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)))
                 } else {

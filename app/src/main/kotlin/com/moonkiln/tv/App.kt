@@ -2,6 +2,7 @@ package com.moonkiln.tv
 
 import android.app.Application
 import android.os.PowerManager
+import com.moonkiln.tv.data.BridgeRepo
 import com.moonkiln.tv.data.DashboardRepo
 import com.moonkiln.tv.data.TodayRepo
 import com.moonkiln.tv.toast.OrderToast
@@ -15,6 +16,7 @@ class App : Application() {
     lateinit var dashboard: DashboardRepo
     lateinit var inputs: TvInputs
     lateinit var toast: OrderToast
+    val bridge = BridgeRepo()
 
     override fun onCreate() {
         super.onCreate()

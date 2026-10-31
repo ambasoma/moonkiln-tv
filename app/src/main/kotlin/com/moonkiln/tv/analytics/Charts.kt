@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -79,46 +80,74 @@ private fun DrawScope.roundedTopBar(x: Float, top: Float, w: Float, base: Float,
     drawPath(path, color, alpha = alpha)
 }
 
-private fun DrawScope.gridAndAxis(tm: TextMeasurer, x1: Float, hi: Double, step: Double) {
+// Text layouts measured once per data set and width, then drawn every frame: measuring a dozen labels
+// per frame was the main cost of the 550 ms pass on this chip.
+private class Placed(val layout: androidx.compose.ui.text.TextLayoutResult, val at: Offset)
+
+private fun axisLayouts(tm: TextMeasurer, hi: Double, step: Double): List<Placed> {
+    val out = ArrayList<Placed>()
     var v = 0.0
     while (v <= hi + 0.001) {
         val y = (Y1 - (v / hi) * (Y1 - Y0)).toFloat()
-        drawLine(Kiln.hairline, Offset(X0, y), Offset(x1, y), strokeWidth = 1f)
         val t = tm.measure(compact(v), Type.axis)
-        drawText(t, topLeft = Offset(25f - t.size.width, y + 4f - t.size.height * 0.78f))
+        out.add(Placed(t, Offset(25f - t.size.width, y + 4f - t.size.height * 0.78f)))
         v += step
     }
-    drawLine(Kiln.field, Offset(X0, Y1), Offset(x1, Y1), strokeWidth = 1f)
+    return out
 }
 
-private fun DrawScope.xLabels(tm: TextMeasurer, dates: List<String>, slot: Float, w: Float) {
+private fun xLabelLayouts(tm: TextMeasurer, dates: List<String>, slot: Float, w: Float): List<Placed> {
     val n = dates.size
     val every = labelEvery(w, n)
+    val out = ArrayList<Placed>()
     dates.forEachIndexed { i, d ->
         val show = i % every == 0 || (w < 260 && i == n - 1)
         if (!show) return@forEachIndexed
         val t = tm.measure(dateLabel(d), Type.axis)
         val cx = X0 + i * slot + slot / 2
-        drawText(t, topLeft = Offset(cx - t.size.width / 2, LABEL_Y - t.size.height * 0.78f))
+        out.add(Placed(t, Offset(cx - t.size.width / 2, LABEL_Y - t.size.height * 0.78f)))
     }
+    return out
+}
+
+private fun DrawScope.gridAndAxis(x1: Float, hi: Double, step: Double, labels: List<Placed>) {
+    var v = 0.0
+    while (v <= hi + 0.001) {
+        val y = (Y1 - (v / hi) * (Y1 - Y0)).toFloat()
+        drawLine(Kiln.hairline, Offset(X0, y), Offset(x1, y), strokeWidth = 1f)
+        v += step
+    }
+    labels.forEach { drawText(it.layout, topLeft = it.at) }
+    drawLine(Kiln.field, Offset(X0, Y1), Offset(x1, Y1), strokeWidth = 1f)
+}
+
+private fun DrawScope.xLabels(labels: List<Placed>) {
+    labels.forEach { drawText(it.layout, topLeft = it.at) }
 }
 
 // Sessions by channel, stacked bars with 4 px rounded tops and 2 px gaps between segments.
 @Composable
 fun ChannelChart(rows: List<ChannelRow>, width: Int, progress: Float, hover: Int) {
     val tm = rememberTextMeasurer(cacheSize = 64)
-    Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
-        val w = width.toFloat()
-        val x1 = w - 6f
-        val n = rows.size
-        if (n == 0) return@Canvas
+    val w = width.toFloat()
+    val x1 = w - 6f
+    val n = rows.size
+    val geo = remember(rows, width) {
         val totals = rows.map { it.values.sum().toDouble() }
         val cMax = max(1.0, totals.maxOrNull() ?: 1.0)
         val step = niceStep(cMax, 3)
         val hi = ceil(cMax / step) * step
-        val slot = (x1 - X0) / n
+        val slot = if (n > 0) (x1 - X0) / n else 1f
         val cw = min(24f, max(3f, slot - 2f))
-        gridAndAxis(tm, x1, hi, step)
+        val axis = axisLayouts(tm, hi, step)
+        val xl = xLabelLayouts(tm, rows.map { it.date }, slot, w)
+        Pair(Triple(hi, step, slot), Triple(cw, axis, xl))
+    }
+    Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
+        if (n == 0) return@Canvas
+        val (hi, step, slot) = geo.first
+        val (cw, axis, xl) = geo.second
+        gridAndAxis(x1, hi, step, axis)
         rows.forEachIndexed { i, r ->
             val x = X0 + i * slot + (slot - cw) / 2
             var acc = 0.0
@@ -141,7 +170,7 @@ fun ChannelChart(rows: List<ChannelRow>, width: Int, progress: Float, hover: Int
                 acc += v
             }
         }
-        xLabels(tm, rows.map { it.date }, slot, w)
+        xLabels(xl)
     }
 }
 
@@ -149,6 +178,20 @@ fun ChannelChart(rows: List<ChannelRow>, width: Int, progress: Float, hover: Int
 @Composable
 fun TrendChart(rows: List<SocialRow>, width: Int, progress: Float, hover: Int) {
     val tm = rememberTextMeasurer(cacheSize = 64)
+    val trendLabels = remember(rows, width) {
+        val w = width.toFloat()
+        val x1 = w - 6f
+        val n = rows.size
+        if (n == 0) emptyList() else {
+            val tx = { i: Int -> X0 + (if (n > 1) i / (n - 1f) else 0f) * (x1 - X0) }
+            val idxs = (if (w < 260) listOf(0, n - 1) else listOf(0, (n - 1) / 2, n - 1)).distinct()
+            idxs.mapIndexed { k, i ->
+                val t = tm.measure(dateLabel(rows[i].date), Type.axis)
+                val x = when (k) { 0 -> tx(i); idxs.size - 1 -> tx(i) - t.size.width; else -> tx(i) - t.size.width / 2 }
+                Placed(t, Offset(x, LABEL_Y - t.size.height * 0.78f))
+            }
+        }
+    }
     Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
         val w = width.toFloat()
         val x1 = w - 6f
@@ -206,12 +249,7 @@ fun TrendChart(rows: List<SocialRow>, width: Int, progress: Float, hover: Int) {
             val hx = tx(hover)
             drawLine(Kiln.grey5, Offset(hx, Y0), Offset(hx, Y1), strokeWidth = 1f)
         }
-        val idxs = if (w < 260) listOf(0, n - 1) else listOf(0, (n - 1) / 2, n - 1)
-        idxs.distinct().forEachIndexed { k, i ->
-            val t = tm.measure(dateLabel(rows[i].date), Type.axis)
-            val x = when (k) { 0 -> tx(i); idxs.distinct().size - 1 -> tx(i) - t.size.width; else -> tx(i) - t.size.width / 2 }
-            drawText(t, topLeft = Offset(x, LABEL_Y - t.size.height * 0.78f))
-        }
+        trendLabels.forEach { drawText(it.layout, topLeft = it.at) }
     }
 }
 
@@ -219,17 +257,22 @@ fun TrendChart(rows: List<SocialRow>, width: Int, progress: Float, hover: Int) {
 @Composable
 fun SearchChart(rows: List<SearchRow>, width: Int, progress: Float, hover: Int) {
     val tm = rememberTextMeasurer(cacheSize = 64)
-    Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
-        val w = width.toFloat()
-        val x1 = w - 6f
-        val n = rows.size
-        if (n == 0) return@Canvas
-        val slot = (x1 - X0) / n
+    val w = width.toFloat()
+    val x1 = w - 6f
+    val n = rows.size
+    val geo = remember(rows, width) {
+        val slot = if (n > 0) (x1 - X0) / n else 1f
         val sw = min(24f, max(3f, slot - 2f))
-        val sMax = max(1.0, rows.maxOf { it.impressions.toDouble() })
+        val sMax = max(1.0, rows.maxOfOrNull { it.impressions.toDouble() } ?: 1.0)
         val step = niceStep(sMax, 3)
         val hi = ceil(sMax / step) * step
-        gridAndAxis(tm, x1, hi, step)
+        Pair(Triple(hi, step, slot), Triple(sw, axisLayouts(tm, hi, step), xLabelLayouts(tm, rows.map { it.date }, slot, w)))
+    }
+    Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
+        if (n == 0) return@Canvas
+        val (hi, step, slot) = geo.first
+        val (sw, axis, xl) = geo.second
+        gridAndAxis(x1, hi, step, axis)
         val layers = listOf(
             Triple({ r: SearchRow -> r.impressions.toDouble() }, Kiln.searchImpressions, 1f),
             Triple({ r: SearchRow -> r.clicks.toDouble() }, Kiln.searchClicks, 0.6f),
@@ -246,7 +289,7 @@ fun SearchChart(rows: List<SearchRow>, width: Int, progress: Float, hover: Int) 
                 roundedTopBar(x, top, bw, Y1, colour, alpha)
             }
         }
-        xLabels(tm, rows.map { it.date }, slot, w)
+        xLabels(xl)
     }
 }
 

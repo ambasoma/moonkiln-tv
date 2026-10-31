@@ -9,6 +9,12 @@ Serves, on the LAN only and behind a bearer token:
   GET /thumbs/<media id>.jpg a post thumbnail from the warehouse thumbs folder
   GET /health                liveness, no token needed
 
+The Claude bridge (v2, Claude on the TV), same token:
+  POST /bridge/event         the Claude session's hooks post prompts, tool markers, answers and status here
+  GET  /bridge/events?since=N&wait=25   the TV long-polls for events after sequence N
+  POST /bridge/prompt        a prompt typed on the TV, typed into the tmux session cc-claude-on-tv
+  GET  /bridge/status        live / working / listening / offline, and whether the tmux session exists
+
 Sources:
   1. The warehouse DuckDB files (ig.duckdb and raw_youtube.duckdb), opened read-only for the few
      milliseconds a query takes, then closed, so the nightly dbt writer is never blocked. DuckDB allows
@@ -28,6 +34,8 @@ import ipaddress
 import json
 import os
 import re
+import shutil
+import subprocess
 import threading
 import time
 import urllib.request
@@ -546,6 +554,87 @@ TODAY = Cached(CACHE_SECONDS)
 DASHBOARDS = {d: Cached(DASHBOARD_CACHE_SECONDS) for d in (7, 30, 90)}
 
 
+# ------------------------------------------------------------------------------------------------
+# The Claude bridge: a ring of events the TV long-polls, and a way to type into the tmux session
+# ------------------------------------------------------------------------------------------------
+
+TMUX = os.environ.get("MK_TMUX", "/opt/homebrew/bin/tmux")
+CLAUDE_TMUX_SESSION = os.environ.get("MK_CLAUDE_TMUX", "cc-claude-on-tv")
+BRIDGE_RING = 300
+
+
+class Bridge:
+    """Events from the Claude session, in order, with a sequence number the TV resumes from."""
+
+    def __init__(self) -> None:
+        self.cond = threading.Condition()
+        self.events: list[dict] = []
+        self.seq = 0
+        self.status = "offline"
+        self.status_at = 0.0
+
+    def post(self, ev: dict) -> dict:
+        with self.cond:
+            self.seq += 1
+            ev = dict(ev)
+            ev["seq"] = self.seq
+            ev["ts"] = time.time()
+            t = ev.get("type")
+            if t == "prompt":
+                self.status = "working"
+            elif t == "text":
+                self.status = "live"
+            elif t == "status" and ev.get("status") in ("live", "working", "listening", "offline"):
+                self.status = ev["status"]
+            self.status_at = ev["ts"]
+            self.events.append(ev)
+            if len(self.events) > BRIDGE_RING:
+                del self.events[: len(self.events) - BRIDGE_RING]
+            self.cond.notify_all()
+            return ev
+
+    def after(self, since: int, wait: float) -> list[dict]:
+        deadline = time.time() + wait
+        with self.cond:
+            while self.seq <= since:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return []
+                self.cond.wait(remaining)
+            return [e for e in self.events if e["seq"] > since][-100:]
+
+    def session_alive(self) -> bool:
+        if not shutil.which(TMUX) and not os.path.exists(TMUX):
+            return False
+        try:
+            return subprocess.run([TMUX, "has-session", "-t", CLAUDE_TMUX_SESSION], capture_output=True, timeout=3).returncode == 0
+        except Exception:
+            return False
+
+    def status_now(self) -> dict:
+        alive = self.session_alive()
+        status = self.status if alive else "offline"
+        return {"status": status, "session": CLAUDE_TMUX_SESSION, "alive": alive, "seq": self.seq, "since": self.status_at}
+
+    def send_prompt(self, text: str) -> bool:
+        """Types the prompt into the tmux session and presses Enter, as a person at the keyboard would."""
+        text = " ".join(text.split())
+        if not text or not self.session_alive():
+            return False
+        try:
+            target = CLAUDE_TMUX_SESSION  # tmux 3.7 on the mini does not take the =name exact form
+            subprocess.run([TMUX, "send-keys", "-t", target, "-l", text], check=True, timeout=3)
+            time.sleep(0.15)
+            subprocess.run([TMUX, "send-keys", "-t", target, "Enter"], check=True, timeout=3)
+            return True
+        except Exception as e:
+            log(f"send_prompt failed: {e}")
+            return False
+
+
+BRIDGE = Bridge()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "mk-today/2"
     protocol_version = "HTTP/1.1"
@@ -584,6 +673,44 @@ class Handler(BaseHTTPRequestHandler):
             ip = ip.ipv4_mapped
         return any(ip in n for n in ALLOWED_NETS)
 
+    def authorised(self) -> bool:
+        token = read_token(TOKEN_FILE)
+        auth = self.headers.get("Authorization", "")
+        return bool(token) and auth == f"Bearer {token}"
+
+    def read_body(self) -> dict:
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if n <= 0 or n > 65536:
+                return {}
+            return json.loads(self.rfile.read(n).decode() or "{}")
+        except Exception:
+            return {}
+
+    def do_POST(self):
+        if not self.allowed_client():
+            self.send_json(403, {"error": "lan only"})
+            return
+        if not self.authorised():
+            self.send_json(401, {"error": "bearer token required"})
+            return
+        url = urlparse(self.path)
+        body = self.read_body()
+        if url.path == "/bridge/event":
+            t = body.get("type")
+            if t not in ("prompt", "text", "tool_start", "tool_done", "status", "announce"):
+                self.send_json(400, {"error": "unknown event type"})
+                return
+            ev = BRIDGE.post(body)
+            self.send_json(200, {"seq": ev["seq"]})
+            return
+        if url.path == "/bridge/prompt":
+            text = str(body.get("text", ""))[:2000]
+            ok = BRIDGE.send_prompt(text)
+            self.send_json(200 if ok else 503, {"sent": ok, **BRIDGE.status_now()})
+            return
+        self.send_json(404, {"error": "not found"})
+
     def do_GET(self):
         if not self.allowed_client():
             self.send_json(403, {"error": "lan only"})
@@ -592,10 +719,21 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/health":
             self.send_json(200, {"ok": True})
             return
-        token = read_token(TOKEN_FILE)
-        auth = self.headers.get("Authorization", "")
-        if not token or auth != f"Bearer {token}":
+        if not self.authorised():
             self.send_json(401, {"error": "bearer token required"})
+            return
+        if url.path == "/bridge/status":
+            self.send_json(200, BRIDGE.status_now())
+            return
+        if url.path == "/bridge/events":
+            q = parse_qs(url.query)
+            try:
+                since = int(q.get("since", ["0"])[0])
+                wait = min(30.0, max(0.0, float(q.get("wait", ["0"])[0])))
+            except ValueError:
+                since, wait = 0, 0.0
+            events = BRIDGE.after(since, wait)
+            self.send_json(200, {"events": events, **BRIDGE.status_now()})
             return
         if url.path == "/today":
             self.send_json(200, TODAY.get(compute_today))
