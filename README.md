@@ -4,6 +4,37 @@ A custom Android TV home launcher for Amba's OnePlus TV Y Series (Android TV 11,
 
 Linear project: "Moon Kiln TV launcher" (P-MOO-25). No em-dashes anywhere in this repo.
 
+## What it looks like
+
+Captured on the TV itself on 31 Oct and 1 Nov 2026 (`screencap` and `screenrecord` over adb, GIFs made with ffmpeg and gifski). The media lives in `docs/media/`.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/home.png" alt="Home: the Moon Kiln logo, greeting, the PS5 card in focus, today's sales and the apps row"><br><b>Home.</b> PS5 first, today's sales beside it, five tiles below.</td>
+<td width="50%"><img src="docs/media/numbers.png" alt="What's going on: KPI tiles, sessions by channel, social trends, Google search and top posts"><br><b>What's going on.</b> The numbers page, one dashboard from the warehouse.</td>
+</tr>
+<tr>
+<td><img src="docs/media/claude.png" alt="Claude on the TV answering how many orders came in this week"><br><b>Claude.</b> The session on the mini, answering on the big screen.</td>
+<td><img src="docs/media/announce.png" alt="An announcement from Amba taking over the screen, with Got it and Say it again"><br><b>Tell the house.</b> An announcement over whatever is on, the PS5 included.</td>
+</tr>
+<tr>
+<td><img src="docs/media/ambient.png" alt="Ambient mode: a large clock, the date, orders to fulfil and a polaroid of Mr Fox"><br><b>Ambient.</b> The screensaver, a clock and the work on the shelf.</td>
+<td><img src="docs/media/numbers-chart.png" alt="The sessions by channel chart expanded across the page"><br><b>A chart, opened.</b> OK widens a chart, Back puts it back.</td>
+</tr>
+</table>
+
+### In motion
+
+| Moving around home | Opening the numbers |
+|---|---|
+| ![Focus moving between the PS5 card, the today card and the tiles](docs/media/home-focus.gif) | ![Opening What's going on from the today card, the count-up, a chart expanding](docs/media/numbers.gif) |
+| **Asking Claude** | **An announcement** |
+| ![A question from the phone appearing on the TV, then the answer revealed word by word](docs/media/claude.gif) | ![The chime, the scrim, and the words lighting from dim to cream](docs/media/announce.gif) |
+
+![Ambient mode, the polaroid swaying gently](docs/media/ambient.gif)
+
+The Claude GIF skips the time Claude spends thinking: `screenrecord` only writes a frame when the screen changes. The announcement in the GIF was sent without the voice (it was past midnight), so the words light at reading pace; with the voice they light as Kokoro says them.
+
 ## Layout
 
 - `app/`: the launcher, Kotlin plus Jetpack Compose (foundation only, no material), minSdk 30, targetSdk 30, `armeabi-v7a` only. The design is the canvas "Moon Kiln TV Launcher" (Linear MOO-637); every pixel number in the code comes from it.
@@ -14,6 +45,8 @@ Linear project: "Moon Kiln TV launcher" (P-MOO-25). No em-dashes anywhere in thi
   - `toast/`: the new order toast, an overlay window of plain views so it shows over the PS5 picture.
   - `data/`: the mini client, the today and dashboard repositories (last good answer kept, stale badge when the mini is away), a tiny image loader.
   - `tv/`: TvInputManager helpers (PS5 power from the HDMI signal state, the passthrough switch) and the network pill.
+  - `claude/`: the Claude screen. `announce/`: the home announcement overlay.
+  - `StartReceiver`: starts the process after a boot or an update, so the bridge listener (announcements, the order toast) runs even when the TV comes up on HDMI and nobody presses Home.
 - `mini/`: `today_server.py` (the endpoint), its launchd plist and `install.sh`.
 
 The composition locks density to one pixel per dp (`KilnRoot`), so the canvas's 1280x720 pixel sizes apply as written on the 213 dpi panel. Only transform and opacity animate; durations honour the TV's animator scale (zero means no motion).
@@ -130,7 +163,9 @@ The bridge is part of the mini server (same port, same token):
 - The session's hooks (`claude-on-tv/.claude/settings.json` running `bridge_hook.py`) post one event per prompt (`prompt`), per tool call (`tool_start` and `tool_done`, with one-line markers such as "tv · switched to HDMI 1" or "mini · today's numbers") and per answer (`text`, the whole message at Stop; the TV reveals it word by word at 55 ms a word). Session start and end post `status`.
 - `GET /bridge/events?since=N&wait=25` is what the TV long-polls while the Claude screen is open; it also carries the status (live, working, listening, offline) and whether the tmux session exists.
 - `POST /bridge/prompt` types a prompt into the tmux session with `tmux send-keys` and presses Enter, so a prompt from the TV is no different from one typed at the keyboard. It answers 503 when the session is not running.
-- `announce` is accepted as an event type and shown on the Claude screen for now; the home announcement (chime, spoken message, overlay over the PS5 picture) is being designed and will ride the same event.
+- `announce` events ride the same bridge; see "Tell the house" below.
+- Claude's housekeeping tools (ToolSearch, the to-do list) never show on the TV, and a tool the hook does not know shows by name only, never its raw input.
+- After the mini server restarts, a running session reads as live, not offline, until its next status event.
 
 The remote's microphone needs Bluetooth pairing before voice can work (the remote is infrared only until then); the mic keys and the "Hold mic" pill show the listening state and then point to the phone.
 
@@ -139,7 +174,7 @@ The remote's microphone needs Bluetooth pairing before voice can work (the remot
 Built to Announce.dc.html, AnnouncePhone.dc.html and AnnounceFlow.dc.html (Linear MOO-644). The mini does the heavy part and the TV only draws and plays:
 
 - `POST /announce {text, from, voice, wake}` on the mini (same token) renders the voice with Kokoro through the Jarvis venv (`mini/say.py`; the voice is the one-line setting `MK_ANNOUNCE_VOICE`, default `af_heart`, deliberately not Jarvis's `bm_george`; about three seconds for a sentence), wakes the TV over adb when asked and it is asleep, pushes one `announce` event on the bridge, and keeps the receipts (`/announce/<id>/shown` and `/seen`, posted by the TV). `GET /announce/` is the phone page (token pasted once, kept on the phone); `GET /announce/list` is what it reads. Claude in the claude-on-tv session can announce with the same POST, shown as the marker "announce · on the TV".
-- The launcher's bridge listener runs all the time (not only on the Claude screen), so an announcement arrives whatever is on. The overlay is plain views in an overlay window over anything, the PS5 picture included: chime at 0 (bundled, `res/raw/chime.wav`), a flat 94% ink scrim over 350 ms, the message rising 12 px over 550 ms, the voice from 700 ms with the words lighting from dim to cream as they are said (spread evenly over the voice's length; Kokoro gives no word timings) and the final punctuation in green, then Got it and Say it again. The overlay takes key focus and consumes every key, so nothing reaches the PS5; OK dismisses, left and right pick Say it again. One at a time, the rest queue ("N more after this"); after ten minutes unseen it shrinks to a corner pill. If the music stream is muted or under 20 it goes to 20 for the message and back after. The voice asks for transient audio focus with ducking.
+- The launcher's bridge listener runs all the time (not only on the Claude screen), so an announcement arrives whatever is on. The overlay is plain views in an overlay window over anything, the PS5 picture included: chime at 0 (bundled, `res/raw/chime.wav`), a flat 94% ink scrim over 350 ms, the message rising 12 px over 550 ms, the voice from 700 ms with the words lighting from dim to cream as they are said (spread evenly over the voice's length; Kokoro gives no word timings) and only the closing punctuation in green (a comma mid-sentence lights like its word), then Got it and Say it again. The From line carries the board's sun-yellow speaker icon. The overlay takes key focus and consumes every key, so nothing reaches the PS5; OK dismisses, left and right pick Say it again. One at a time, the rest queue ("N more after this", recounted as each one arrives); the TV remembers the last 50 ids it has shown, so the bridge's replay after a restart never brings back one that was already seen; after ten minutes unseen it shrinks to a corner pill. If the music stream is muted or under 20 it goes to 20 for the message and back after. The voice asks for transient audio focus with ducking.
 
 ### The Home bounce guard
 

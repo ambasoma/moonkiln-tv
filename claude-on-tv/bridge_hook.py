@@ -41,9 +41,15 @@ def short(s: str, n: int = 56) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def marker(tool: str, inp: dict) -> str:
-    """One grey line on the TV for a tool call, in the board's voice: 'tv · switched to HDMI 1'."""
+# Claude's own housekeeping (loading tools, keeping a to-do list) is not something to show on the TV.
+QUIET_TOOLS = {"ToolSearch", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "TaskOutput", "TaskStop", "ExitPlanMode", "EnterPlanMode"}
+
+
+def marker(tool: str, inp: dict) -> str | None:
+    """One grey line on the TV for a tool call, in the board's voice: 'tv · switched to HDMI 1'. None hides it."""
     inp = inp or {}
+    if tool in QUIET_TOOLS:
+        return None
     if tool == "Skill":
         return "skill · " + short(str(inp.get("skill", "")).split(":")[-1].replace("-", " "), 40)
     if tool == "Bash":
@@ -89,7 +95,8 @@ def marker(tool: str, inp: dict) -> str:
             if key in tool.lower():
                 server = key
         return f"{server} · {short(name, 40)}"
-    return f"{tool.lower()} · {short(json.dumps(inp)[:60], 40)}"
+    # Never raw input on the TV: an unknown tool shows by name only.
+    return re.sub(r"(?<!^)(?=[A-Z])", " ", tool).lower()
 
 
 def last_text(payload: dict) -> str:
@@ -129,10 +136,11 @@ def main() -> None:
         text = str(payload.get("prompt", "")).strip()
         if text:
             post({"type": "prompt", "text": text[:MAX_TEXT], "sid": sid})
-    elif mode == "pre":
-        post({"type": "tool_start", "tool_id": payload.get("tool_use_id") or "", "text": marker(payload.get("tool_name", ""), payload.get("tool_input") or {}), "sid": sid})
-    elif mode == "post":
-        post({"type": "tool_done", "tool_id": payload.get("tool_use_id") or "", "text": marker(payload.get("tool_name", ""), payload.get("tool_input") or {}), "sid": sid})
+    elif mode in ("pre", "post"):
+        text = marker(payload.get("tool_name", ""), payload.get("tool_input") or {})
+        if text:
+            kind = "tool_start" if mode == "pre" else "tool_done"
+            post({"type": kind, "tool_id": payload.get("tool_use_id") or "", "text": text, "sid": sid})
     elif mode == "stop":
         if payload.get("stop_hook_active"):
             return

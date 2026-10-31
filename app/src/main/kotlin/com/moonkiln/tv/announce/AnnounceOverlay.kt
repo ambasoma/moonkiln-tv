@@ -53,6 +53,20 @@ class AnnounceOverlay(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main)
 
     private val queue = ArrayDeque<Announcement>()
+
+    // Ids already put on screen, kept across restarts: after an update or a reboot the bridge replays its
+    // recent events, and an announcement someone has already dismissed must not come back.
+    private val shownPrefs = context.getSharedPreferences("announce", Context.MODE_PRIVATE)
+    private fun alreadyShown(id: String) = id in (shownPrefs.getStringSet("shown", emptySet()) ?: emptySet())
+    private fun markShown(id: String) {
+        val ids = (shownPrefs.getString("order", "") ?: "").split(' ').filter { it.isNotEmpty() }.plus(id).takeLast(50)
+        shownPrefs.edit().putString("order", ids.joinToString(" ")).putStringSet("shown", ids.toSet()).apply()
+    }
+
+    private fun refreshQueuedPill() {
+        queuedPill?.text = "${queue.size} more after this"
+        queuedPill?.visibility = if (queue.isEmpty()) View.GONE else View.VISIBLE
+    }
     private var current: Announcement? = null
     private var root: FrameLayout? = null
     private var scrim: View? = null
@@ -91,10 +105,13 @@ class AnnounceOverlay(private val context: Context) {
         if (!canShow()) { Log.w(TAG, "overlay permission missing"); return }
         Log.i(TAG, "enqueue ${a.id} from ${a.from}")
         handler.post {
+            if (alreadyShown(a.id) || current?.id == a.id || queue.any { it.id == a.id }) {
+                Log.i(TAG, "skip ${a.id}, already shown or queued"); return@post
+            }
             dropCornerPill()
             queue.addLast(a)
             if (current == null) next()
-            else queuedPill?.visibility = View.VISIBLE
+            else refreshQueuedPill()
         }
     }
 
@@ -136,6 +153,7 @@ class AnnounceOverlay(private val context: Context) {
         spoken = 0
         phase = "in"
         build(a)
+        markShown(a.id)
         receipt(a.id, "shown")
         raiseVolumeIfNeeded()
         // t = 0: chime, scrim and the message start together.
@@ -367,10 +385,11 @@ class AnnounceOverlay(private val context: Context) {
 
         // From line
         val fromRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val icon = TextView(context).apply {
-            text = "🔊"
-            setTextSize(TypedValue.COMPLEX_UNIT_PX, 18f)
-            gravity = Gravity.CENTER
+        val icon = android.widget.ImageView(context).apply {
+            setImageResource(R.drawable.ic_speaker)
+            // The overlay is plain views in pixels, so pin the glyph to 20 px inside the 40 px circle.
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setPadding(10, 10, 10, 10)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(card); setStroke(1, field) }
             layoutParams = LinearLayout.LayoutParams(40, 40)
         }
@@ -464,9 +483,11 @@ class AnnounceOverlay(private val context: Context) {
             sb.append(body)
             sb.setSpan(ForegroundColorSpan(if (i < spoken || phase == "waiting") cream else dim), start, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             if (punct.isNotEmpty()) {
+                // Only the closing mark is green; a comma mid-sentence lights like its word.
                 val ps = sb.length
                 sb.append(punct)
-                sb.setSpan(ForegroundColorSpan(green), ps, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                val wordColour = if (i < spoken || phase == "waiting") cream else dim
+                sb.setSpan(ForegroundColorSpan(if (i == words.size - 1) green else wordColour), ps, sb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             if (i < words.size - 1) sb.append(' ')
         }
