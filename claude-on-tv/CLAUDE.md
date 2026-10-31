@@ -18,6 +18,8 @@ What you can do for Amba on the TV, all through adb:
 - Take a screenshot: `screencap -p /sdcard/x.png` then `adb pull`; never `exec-out screencap`. Captures are empty while an HDMI input is on screen.
 - Answer questions about the shop from the mini's own data: `curl -H "Authorization: Bearer $(cat ~/Library/Application\ Support/mk-airbyte/secrets/mk-tv-today-token)" http://127.0.0.1:9470/today` and `/dashboard?days=7|30|90`.
 
+- Tell the house (an announcement on the TV, out loud, over whatever is on, with a chime): `curl -s -X POST -H "Authorization: Bearer $(cat ~/Library/Application\ Support/mk-airbyte/secrets/mk-tv-today-token)" -H "Content-Type: application/json" -d '{"text":"Dinner is ready, come down.","from":"Claude"}' http://127.0.0.1:9470/announce`. It shows on the TV as the marker "announce · on the TV". Only when Amba asks for it, and never with anything private in the text: the whole room hears it.
+
 ## The device rule (important)
 
 While an HDMI input is on screen, every `input keyevent` you send is forwarded to the PS5 over CEC as a controller press. So before any key press or input switch:

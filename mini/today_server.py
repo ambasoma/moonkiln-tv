@@ -9,6 +9,14 @@ Serves, on the LAN only and behind a bearer token:
   GET /thumbs/<media id>.jpg a post thumbnail from the warehouse thumbs folder
   GET /health                liveness, no token needed
 
+Announcements (Tell the house), same token:
+  POST /announce {text, from, voice, wake}   renders the voice with Kokoro, wakes the TV over adb if asked
+                                             and it is asleep, pushes an announce event on the bridge
+  GET  /announce/                            the phone page
+  GET  /announce/list                        earlier announcements with their status, and the TV's state
+  GET  /announce/<id>.wav                    the rendered voice, fetched by the TV
+  POST /announce/<id>/shown, /announce/<id>/seen   receipts from the TV
+
 The Claude bridge (v2, Claude on the TV), same token:
   POST /bridge/event         the Claude session's hooks post prompts, tool markers, answers and status here
   GET  /bridge/events?since=N&wait=25   the TV long-polls for events after sequence N
@@ -635,6 +643,129 @@ class Bridge:
 BRIDGE = Bridge()
 
 
+# ------------------------------------------------------------------------------------------------
+# Announcements: render the voice on the mini, wake the TV, push one event, keep the receipts
+# ------------------------------------------------------------------------------------------------
+
+ANNOUNCE_DIR = Path(os.environ.get("MK_ANNOUNCE_DIR", APP_SUPPORT / "mk-tv-today" / "announce"))
+ANNOUNCE_VOICE = os.environ.get("MK_ANNOUNCE_VOICE", "af_heart")  # the one-line voice setting; Jarvis is bm_george
+JARVIS_PY = Path(os.environ.get("MK_JARVIS_PY", Path.home() / "Documents" / "moonkiln" / "jarvis" / ".venv" / "bin" / "python"))
+SAY_PY = Path(__file__).resolve().parent / "say.py"
+PHONE_PAGE = Path(__file__).resolve().parent / "announce" / "index.html"
+ADB = os.environ.get("MK_ADB", "/opt/homebrew/bin/adb")
+TV_SERIAL = os.environ.get("MK_TV", "192.168.0.11:5555")
+
+
+def adb_shell(cmd: str, timeout: float = 8.0) -> str:
+    try:
+        subprocess.run([ADB, "connect", TV_SERIAL], capture_output=True, timeout=5)
+        out = subprocess.run([ADB, "-s", TV_SERIAL, "shell", cmd], capture_output=True, text=True, timeout=timeout)
+        return "\n".join(l for l in out.stdout.splitlines() if "Init wrapper" not in l and "mma dev" not in l)
+    except Exception as e:
+        log(f"adb failed: {e}")
+        return ""
+
+
+def tv_state() -> dict:
+    wake = adb_shell("dumpsys power | grep mWakefulness=")
+    awake = "Awake" in wake
+    resumed = adb_shell("dumpsys activity activities | grep mResumedActivity") if awake else ""
+    inp = "ps5" if "tvcenter" in resumed else "home" if "moonkiln" in resumed else "other" if resumed else "unknown"
+    return {"awake": awake, "reachable": bool(wake), "input": inp}
+
+
+class Announcements:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        ANNOUNCE_DIR.mkdir(parents=True, exist_ok=True)
+        self.log_file = ANNOUNCE_DIR / "log.json"
+        try:
+            self.items: list[dict] = json.loads(self.log_file.read_text())
+        except Exception:
+            self.items = []
+
+    def save(self) -> None:
+        try:
+            self.log_file.write_text(json.dumps(self.items[-50:]))
+        except OSError:
+            pass
+
+    def find(self, aid: str) -> dict | None:
+        return next((i for i in self.items if i["id"] == aid), None)
+
+    def render(self, aid: str, text: str, voice: str) -> float | None:
+        out = ANNOUNCE_DIR / f"{aid}.wav"
+        if not JARVIS_PY.exists():
+            log(f"announce: no Jarvis venv at {JARVIS_PY}")
+            return None
+        try:
+            r = subprocess.run([str(JARVIS_PY), str(SAY_PY), text, voice, str(out)], capture_output=True, text=True, timeout=90)
+            if r.returncode != 0:
+                log(f"announce: render failed: {r.stderr.strip()[-300:]}")
+                return None
+            return float(r.stdout.strip().splitlines()[-1])
+        except Exception as e:
+            log(f"announce: render error: {e}")
+            return None
+
+    def create(self, body: dict) -> dict:
+        text = " ".join(str(body.get("text", "")).split())[:400]
+        if not text:
+            return {"error": "text required"}
+        aid = str(time.time_ns())
+        sender = str(body.get("from", "Amba")).strip()[:40] or "Amba"
+        want_voice = body.get("voice", True)
+        voice = ANNOUNCE_VOICE if want_voice in (True, "", None) else want_voice if isinstance(want_voice, str) else None
+        wake = bool(body.get("wake", True))
+        item = {"id": aid, "text": text, "from": sender, "ts": time.time(), "status": "sent", "voice": bool(voice), "duration": None}
+        with self.lock:
+            self.items.append(item)
+            self.save()
+        t0 = time.time()
+        if voice:
+            item["duration"] = self.render(aid, text, voice)
+            item["voice"] = item["duration"] is not None
+        state = tv_state()
+        if wake and state["reachable"] and not state["awake"]:
+            adb_shell("input keyevent 224")
+            time.sleep(2.5)
+            state = tv_state()
+        if not state["reachable"]:
+            item["status"] = "failed"
+            item["error"] = "TV not reachable, not shown"
+        BRIDGE.post({
+            "type": "announce", "id": aid, "text": text, "from": sender, "time": now_ist().strftime("%-I:%M %p").lower(),
+            "voice_url": f"/announce/{aid}.wav" if item["voice"] else None, "duration": item["duration"], "wake": wake,
+        })
+        item["render_s"] = round(time.time() - t0, 2)
+        with self.lock:
+            self.save()
+        log(f"announce {aid}: from {sender}, voice={item['voice']}, tv={state}, took {item['render_s']} s")
+        return {"id": aid, "voice": item["voice"], "duration": item["duration"], "tv": state, "status": item["status"]}
+
+    def receipt(self, aid: str, what: str) -> bool:
+        with self.lock:
+            it = self.find(aid)
+            if not it:
+                return False
+            if what == "shown" and it["status"] == "sent":
+                it["status"] = "shown"
+                it["shown_at"] = time.time()
+            elif what == "seen":
+                it["status"] = "seen"
+                it["seen_at"] = time.time()
+            self.save()
+            return True
+
+    def listing(self) -> dict:
+        with self.lock:
+            items = list(reversed(self.items[-20:]))
+        return {"items": items, "tv": tv_state()}
+
+
+ANNOUNCE = Announcements()
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "mk-today/2"
     protocol_version = "HTTP/1.1"
@@ -709,6 +840,15 @@ class Handler(BaseHTTPRequestHandler):
             ok = BRIDGE.send_prompt(text)
             self.send_json(200 if ok else 503, {"sent": ok, **BRIDGE.status_now()})
             return
+        if url.path == "/announce":
+            res = ANNOUNCE.create(body)
+            self.send_json(400 if "error" in res else 200, res)
+            return
+        m = re.fullmatch(r"/announce/([0-9]+)/(shown|seen)", url.path)
+        if m:
+            ok = ANNOUNCE.receipt(m.group(1), m.group(2))
+            self.send_json(200 if ok else 404, {"ok": ok})
+            return
         self.send_json(404, {"error": "not found"})
 
     def do_GET(self):
@@ -719,11 +859,21 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/health":
             self.send_json(200, {"ok": True})
             return
+        if url.path in ("/announce", "/announce/"):
+            self.send_file(PHONE_PAGE, "text/html; charset=utf-8")
+            return
         if not self.authorised():
             self.send_json(401, {"error": "bearer token required"})
             return
         if url.path == "/bridge/status":
             self.send_json(200, BRIDGE.status_now())
+            return
+        if url.path == "/announce/list":
+            self.send_json(200, ANNOUNCE.listing())
+            return
+        m = re.fullmatch(r"/announce/([0-9]+)\.wav", url.path)
+        if m:
+            self.send_file(ANNOUNCE_DIR / f"{m.group(1)}.wav", "audio/wav")
             return
         if url.path == "/bridge/events":
             q = parse_qs(url.query)

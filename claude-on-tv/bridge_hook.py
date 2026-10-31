@@ -44,9 +44,13 @@ def short(s: str, n: int = 56) -> str:
 def marker(tool: str, inp: dict) -> str:
     """One grey line on the TV for a tool call, in the board's voice: 'tv · switched to HDMI 1'."""
     inp = inp or {}
+    if tool == "Skill":
+        return "skill · " + short(str(inp.get("skill", "")).split(":")[-1].replace("-", " "), 40)
     if tool == "Bash":
         cmd = str(inp.get("command", ""))
         desc = str(inp.get("description", "")).strip()
+        if "/announce" in cmd and "POST" in cmd.upper():
+            return "announce · on the TV"
         if "adb" in cmd:
             if "passthrough" in cmd and "HW5" in cmd:
                 return "tv · switched to HDMI 1"

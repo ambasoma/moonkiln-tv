@@ -12,6 +12,9 @@ VENV="$HOME/Library/Application Support/mk-ig-metrics/.venv/bin/python"
 [ -x "$VENV" ] || { echo "warehouse venv missing at $VENV (run scripts/ig-metrics/install.sh first)"; exit 1; }
 mkdir -p "$APP" "$SECRETS"
 cp "$HERE/today_server.py" "$APP/today_server.py"
+cp "$HERE/say.py" "$APP/say.py"
+mkdir -p "$APP/announce"
+cp "$HERE/announce/index.html" "$APP/announce/index.html"
 
 if [ ! -s "$SECRETS/mk-tv-today-token" ]; then
   umask 077

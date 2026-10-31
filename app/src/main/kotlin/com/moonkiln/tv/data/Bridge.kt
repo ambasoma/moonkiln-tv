@@ -2,6 +2,7 @@ package com.moonkiln.tv.data
 
 import android.util.Log
 import com.moonkiln.tv.BuildConfig
+import com.moonkiln.tv.announce.Announcement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,12 +47,18 @@ class BridgeRepo {
     private var job: Job? = null
     private var since = 0L
     private var nextLocalId = -1L
+    private val startedAt = System.currentTimeMillis()
+
+    // Announcements go to the overlay whatever screen is up; a replay of the ring on start skips old ones.
+    var onAnnounce: ((Announcement) -> Unit)? = null
 
     fun start() {
         if (job?.isActive == true) return
         job = scope.launch {
             while (isActive) {
+                val t0 = System.currentTimeMillis()
                 val body = withContext(Dispatchers.IO) { fetch(since) }
+                if (body != null && body.optJSONArray("events")?.length() ?: 0 > 0) Log.i(TAG, "poll returned ${body.optJSONArray("events")?.length()} events after ${System.currentTimeMillis() - t0} ms")
                 if (body == null) {
                     _state.value = _state.value.copy(reachable = false)
                     delay(3000)
@@ -119,7 +126,17 @@ class BridgeRepo {
                         msgs = if (idx >= 0) msgs.toMutableList().also { it[idx] = it[idx].copy(running = false) }
                         else msgs + Msg(e.optLong("seq"), MsgKind.TOOL, text)
                     }
-                    "announce" -> msgs = msgs + Msg(e.optLong("seq"), MsgKind.ANNOUNCE, text)
+                    "announce" -> {
+                        val age = (System.currentTimeMillis() / 1000.0) - e.optDouble("ts", 0.0)
+                        val fresh = age < 120.0
+                        Log.i(TAG, "announce seq=${e.optLong("seq")} age=${"%.1f".format(age)}s fresh=$fresh")
+                        msgs = msgs + Msg(e.optLong("seq"), MsgKind.ANNOUNCE, "${e.optString("from", "Amba")}: $text")
+                        if (fresh) onAnnounce?.invoke(Announcement(
+                            id = e.optString("id"), text = text, from = e.optString("from", "Amba"), time = e.optString("time"),
+                            voiceUrl = e.optString("voice_url").takeIf { it.startsWith("/") },
+                            durationS = if (e.isNull("duration")) null else e.optDouble("duration"),
+                        ))
+                    }
                     else -> {}
                 }
             }

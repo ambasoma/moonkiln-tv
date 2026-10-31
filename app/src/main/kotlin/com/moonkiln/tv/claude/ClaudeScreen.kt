@@ -28,7 +28,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,10 +74,6 @@ val QUICK_PROMPTS = listOf("What's shipping today?", "Switch to PS5", "How are w
 @Composable
 fun ClaudeScreen(bridge: BridgeRepo, focus: ClaudeFocus, onHome: () -> Unit) {
     val state by bridge.state.collectAsState()
-    DisposableEffect(Unit) {
-        bridge.start()
-        onDispose { bridge.stop() }
-    }
     LaunchedEffect(Unit) { runCatching { focus.quick[0].requestFocus() } }
     var draft by remember { mutableStateOf("") }
     var fieldFocused by remember { mutableStateOf(false) }

@@ -134,6 +134,13 @@ The bridge is part of the mini server (same port, same token):
 
 The remote's microphone needs Bluetooth pairing before voice can work (the remote is infrared only until then); the mic keys and the "Hold mic" pill show the listening state and then point to the phone.
 
+### Tell the house (the home announcement)
+
+Built to Announce.dc.html, AnnouncePhone.dc.html and AnnounceFlow.dc.html (Linear MOO-644). The mini does the heavy part and the TV only draws and plays:
+
+- `POST /announce {text, from, voice, wake}` on the mini (same token) renders the voice with Kokoro through the Jarvis venv (`mini/say.py`; the voice is the one-line setting `MK_ANNOUNCE_VOICE`, default `af_heart`, deliberately not Jarvis's `bm_george`; about three seconds for a sentence), wakes the TV over adb when asked and it is asleep, pushes one `announce` event on the bridge, and keeps the receipts (`/announce/<id>/shown` and `/seen`, posted by the TV). `GET /announce/` is the phone page (token pasted once, kept on the phone); `GET /announce/list` is what it reads. Claude in the claude-on-tv session can announce with the same POST, shown as the marker "announce · on the TV".
+- The launcher's bridge listener runs all the time (not only on the Claude screen), so an announcement arrives whatever is on. The overlay is plain views in an overlay window over anything, the PS5 picture included: chime at 0 (bundled, `res/raw/chime.wav`), a flat 94% ink scrim over 350 ms, the message rising 12 px over 550 ms, the voice from 700 ms with the words lighting from dim to cream as they are said (spread evenly over the voice's length; Kokoro gives no word timings) and the final punctuation in green, then Got it and Say it again. The overlay takes key focus and consumes every key, so nothing reaches the PS5; OK dismisses, left and right pick Say it again. One at a time, the rest queue ("N more after this"); after ten minutes unseen it shrinks to a corner pill. If the music stream is muted or under 20 it goes to 20 for the message and back after. The voice asks for transient audio focus with ducking.
+
 ### The Home bounce guard
 
 While the PS5 is on, a Home press is undone by the TV within about two seconds (see "The PS5 bounce (CEC)"). The launcher logs the whole sequence under the tag `MkBounce` and reacts according to a global setting that can be changed over adb without a rebuild:

@@ -2,6 +2,7 @@ package com.moonkiln.tv
 
 import android.app.Application
 import android.os.PowerManager
+import com.moonkiln.tv.announce.AnnounceOverlay
 import com.moonkiln.tv.data.BridgeRepo
 import com.moonkiln.tv.data.DashboardRepo
 import com.moonkiln.tv.data.TodayRepo
@@ -17,6 +18,7 @@ class App : Application() {
     lateinit var inputs: TvInputs
     lateinit var toast: OrderToast
     val bridge = BridgeRepo()
+    lateinit var announce: AnnounceOverlay
 
     override fun onCreate() {
         super.onCreate()
@@ -32,6 +34,9 @@ class App : Application() {
         }
         today.start()
         inputs.start()
+        announce = AnnounceOverlay(this)
+        bridge.onAnnounce = { a -> announce.enqueue(a) }
+        bridge.start()
     }
 
     companion object {
