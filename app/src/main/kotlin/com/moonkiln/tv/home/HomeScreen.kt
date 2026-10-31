@@ -108,7 +108,7 @@ fun HomeScreen(
     ) {
         Box(Modifier.padding(horizontal = 10.dp)) { TopBar(now, ps5Power, network) }
         Box(Modifier.padding(horizontal = 10.dp)) { Greeting(now, todayState.today) }
-        Row(Modifier.height(268.dp).padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Row(Modifier.height(268.dp).padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Ps5Tile(ps5Power, switching, focus.ps5, down = tileRequesters.firstOrNull(), right = focus.card, onClick = actions::switchToPs5)
             TodayCard(todayState, focus.card, down = cardDown, left = focus.ps5, onClick = actions::openAnalytics)
         }
@@ -218,8 +218,9 @@ private fun Greeting(now: LocalDateTime, today: Today?) {
 @Composable
 private fun Ps5Tile(power: Power, switching: Boolean, requester: FocusRequester, down: FocusRequester?, right: FocusRequester?, onClick: () -> Unit) {
     FocusTile(
-        Modifier.width(640.dp).fillMaxHeight(),
+        Modifier.width(636.dp).fillMaxHeight(),
         radius = 28f,
+        focusScale = 1.02f,
         focusRequester = requester,
         down = down,
         right = right,
@@ -274,8 +275,9 @@ fun lerpColor(a: Color, b: Color, t: Float): Color = androidx.compose.ui.graphic
 private fun TodayCard(state: TodayRepo.State, requester: FocusRequester, down: FocusRequester?, left: FocusRequester?, onClick: () -> Unit) {
     val context = LocalContext.current
     FocusTile(
-        Modifier.width(488.dp).fillMaxHeight(),
+        Modifier.width(484.dp).fillMaxHeight(),
         radius = 28f,
+        focusScale = 1.02f,
         focusRequester = requester,
         down = down,
         left = left,

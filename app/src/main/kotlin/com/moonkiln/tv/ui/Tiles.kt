@@ -51,6 +51,8 @@ class TileState(val focused: Boolean, val pressed: Boolean)
 fun FocusTile(
     modifier: Modifier = Modifier,
     radius: Float,
+    // Big cards grow less: 5% of a 640 px card would eat most of the gap beside it.
+    focusScale: Float = 1.05f,
     focusRequester: FocusRequester? = null,
     up: FocusRequester? = null,
     down: FocusRequester? = null,
@@ -64,7 +66,7 @@ fun FocusTile(
     var focused by remember { mutableStateOf(false) }
     val press = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
-    val scale by animateFloatAsState(if (focused) 1.05f else 1f, Motion.tween(Motion.FOCUS), label = "focus")
+    val scale by animateFloatAsState(if (focused) focusScale else 1f, Motion.tween(Motion.FOCUS), label = "focus")
     val ring by animateFloatAsState(if (focused) 1f else 0f, Motion.tween(Motion.FOCUS), label = "ring")
     var pressed by remember { mutableStateOf(false) }
 
@@ -86,7 +88,7 @@ fun FocusTile(
                     KeyEventType.KeyDown -> {
                         if (!pressed) {
                             pressed = true
-                            scope.launch { press.animateTo(0.97f / 1.05f, Motion.tween(Motion.PRESS)) }
+                            scope.launch { press.animateTo(0.97f / focusScale, Motion.tween(Motion.PRESS)) }
                         }
                         true
                     }
