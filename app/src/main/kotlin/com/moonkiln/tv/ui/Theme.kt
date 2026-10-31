@@ -77,10 +77,8 @@ val Hanken = FontFamily(
 object Type {
     val greeting = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = 42.sp, lineHeight = 42.sp, letterSpacing = (-0.02).em, color = Kiln.cream)
     val pageTitle = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = 36.sp, lineHeight = 36.sp, letterSpacing = (-0.02).em, color = Kiln.cream)
-    val wordmark = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = 30.sp, lineHeight = 30.sp, letterSpacing = (-0.02).em, color = Kiln.cream)
     val ps5 = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = 64.sp, lineHeight = 63.sp, letterSpacing = (-0.02).em, color = Kiln.cream)
     val ambientClock = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = 136.sp, lineHeight = 130.sp, letterSpacing = (-0.02).em, color = Kiln.cream)
-    val ambientMark = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, lineHeight = 24.sp, letterSpacing = (-0.02).em, color = Kiln.grey5)
     val cardTitle = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.Bold, fontSize = 19.sp, lineHeight = 22.sp, color = Kiln.cream)
     val chartTitle = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.Bold, fontSize = 18.sp, lineHeight = 21.sp, color = Kiln.cream)
     val polaroidName = TextStyle(fontFamily = Grandstander, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 26.sp, color = Kiln.ink)

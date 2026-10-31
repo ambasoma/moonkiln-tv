@@ -140,7 +140,7 @@ fun HomeScreen(
             // The canvas says "hold Home for ambient", but on this build a long press on Home sends ALL_APPS pinned
             // to the system Settings package, so it can never reach the launcher. The Ambient tile is the way in.
             BasicText("OK selects · Back returns · Ambient for the screensaver", style = Type.hint)
-            BasicText("handmade in Bangalore, one at a time", style = Type.hint)
+            BasicText("handmade in Bengaluru, one at a time", style = Type.hint)
         }
     }
 }
@@ -188,7 +188,7 @@ fun fulfilText(today: Today?): String {
 @Composable
 private fun TopBar(now: LocalDateTime, ps5: Power, network: NetworkState) {
     Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        BasicText("moon kiln", style = Type.wordmark)
+        Image(painterResource(R.drawable.mk_logo_cream), contentDescription = "Moon Kiln", modifier = Modifier.height(48.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Pill(network.label, leading = {
                 Image(painterResource(R.drawable.ic_wifi), contentDescription = null, modifier = Modifier.size(16.dp),
@@ -196,8 +196,8 @@ private fun TopBar(now: LocalDateTime, ps5: Power, network: NetworkState) {
             })
             val on = ps5 == Power.ON
             Pill(if (on) "PS5 on" else "PS5 off", dot = if (on) Kiln.coral else Kiln.grey5)
-            Box(Modifier.width(96.dp), contentAlignment = Alignment.CenterEnd) {
-                BasicText(clockText(now), style = Type.clock.copy(textAlign = TextAlign.End))
+            Box(Modifier.width(128.dp), contentAlignment = Alignment.CenterEnd) {
+                BasicText(clockText(now), style = Type.clock.copy(textAlign = TextAlign.End), maxLines = 1, softWrap = false)
             }
         }
     }

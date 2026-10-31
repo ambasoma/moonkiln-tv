@@ -39,8 +39,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.moonkiln.tv.R
 import com.moonkiln.tv.data.Images
 import com.moonkiln.tv.data.Today
 import com.moonkiln.tv.home.clockText
@@ -62,12 +64,12 @@ val AMBIENT_PHOTOS = listOf(
     AmbientPhoto("photos/capybara.jpg", "Capy", "one of a kind always"),
     AmbientPhoto("photos/tuxedo-kitty.jpg", "Tuxedo Kitty", "only classy in looks"),
     AmbientPhoto("photos/happy-duck.jpg", "Happy Duck", "sculpted, painted and named by hand"),
-    AmbientPhoto("photos/charlie.jpg", "Charlie", "handmade in Bangalore, one at a time"),
+    AmbientPhoto("photos/charlie.jpg", "Charlie", "handmade in Bengaluru, one at a time"),
     AmbientPhoto("photos/jiji.jpg", "Jiji", "pals with jobs and faces"),
     AmbientPhoto("photos/mr-fox.jpg", "Mr Fox", "one of a kind always"),
     AmbientPhoto("photos/mr-ribbit.jpg", "Mr Ribbit", "only classy in looks"),
     AmbientPhoto("photos/shiba-inu.jpg", "Shiba Inu", "sculpted, painted and named by hand"),
-    AmbientPhoto("photos/sunny-bunny.jpg", "Sunny Bunny", "handmade in Bangalore, one at a time"),
+    AmbientPhoto("photos/sunny-bunny.jpg", "Sunny Bunny", "handmade in Bengaluru, one at a time"),
     AmbientPhoto("photos/totoro.jpg", "Totoro", "pals with jobs and faces"),
     AmbientPhoto("photos/mushroom-pal.jpg", "Mushroom Pal", "one of a kind always"),
 )
@@ -144,7 +146,8 @@ fun AmbientScreen(today: Today?, intervalMs: Long = 6000L) {
             current?.let { Polaroid(it, AMBIENT_PHOTOS[index], alpha = fade.value, scale = 0.96f + 0.04f * fade.value, tilt = tilt) }
         }
 
-        BasicText("moon kiln", style = Type.ambientMark, modifier = Modifier.align(Alignment.BottomStart).padding(start = 96.dp, bottom = 44.dp))
+        Image(painterResource(R.drawable.mk_logo_cream), contentDescription = "Moon Kiln", alpha = 0.4f,
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 96.dp, bottom = 40.dp).height(40.dp))
         BasicText("press any button to wake", style = Type.hint.copy(color = Kiln.grey5), modifier = Modifier.align(Alignment.BottomEnd).padding(end = 96.dp, bottom = 44.dp))
     }
 }

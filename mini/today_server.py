@@ -621,7 +621,8 @@ class Bridge:
 
     def status_now(self) -> dict:
         alive = self.session_alive()
-        status = self.status if alive else "offline"
+        # A server restart forgets the last status while the session keeps running, so a live session never reads offline.
+        status = (self.status if self.status != "offline" else "live") if alive else "offline"
         return {"status": status, "session": CLAUDE_TMUX_SESSION, "alive": alive, "seq": self.seq, "since": self.status_at}
 
     def send_prompt(self, text: str) -> bool:
