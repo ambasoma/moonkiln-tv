@@ -125,7 +125,10 @@ object Motion {
 
     @Volatile var scale: Float = 1f
 
-    fun ms(design: Int): Int = if (scale <= 0f) 0 else design
+    // Compose multiplies every tween by the system animator scale, and this set ships with 0.5, which would
+    // halve the canvas timings. Dividing by the scale puts the on-screen duration back at the design's number.
+    // Zero still means no motion at all.
+    fun ms(design: Int): Int = if (scale <= 0f) 0 else (design / scale).toInt()
 
     fun <T> tween(design: Int, delay: Int = 0): TweenSpec<T> = tween(ms(design), if (scale <= 0f) 0 else delay, ease)
 

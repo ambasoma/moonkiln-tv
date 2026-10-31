@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -148,17 +149,25 @@ fun AmbientScreen(today: Today?, intervalMs: Long = 6000L) {
     }
 }
 
+// The fade is applied to each element's paint rather than to the layer, so the crossfade never needs an
+// offscreen buffer: on this chip that was most of the screensaver's graphics memory.
 @Composable
 private fun Polaroid(image: ImageBitmap, photo: AmbientPhoto, alpha: Float, scale: Float, tilt: Float) {
+    val a = alpha.coerceIn(0f, 1f)
     Column(
         Modifier.fillMaxSize()
-            .graphicsLayer { this.alpha = alpha; scaleX = scale; scaleY = scale; rotationZ = tilt; shadowElevation = 16f; shape = RoundedCornerShape(28.dp); clip = false }
-            .background(Color.White, RoundedCornerShape(28.dp))
+            .graphicsLayer { scaleX = scale; scaleY = scale; rotationZ = tilt }
+            // A drawn shadow: a real elevation shadow would cost an offscreen layer and a blur every frame.
+            .drawBehind {
+                drawRoundRect(Color.Black.copy(alpha = 0.35f * a), topLeft = androidx.compose.ui.geometry.Offset(-6f, 10f), size = androidx.compose.ui.geometry.Size(size.width + 12f, size.height + 12f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(34f))
+                drawRoundRect(Color.Black.copy(alpha = 0.25f * a), topLeft = androidx.compose.ui.geometry.Offset(-2f, 4f), size = androidx.compose.ui.geometry.Size(size.width + 4f, size.height + 6f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(30f))
+            }
+            .background(Color.White.copy(alpha = a), RoundedCornerShape(28.dp))
             .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 40.dp),
     ) {
-        Image(image, contentDescription = photo.name, modifier = Modifier.size(396.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFFF1EEE6)), contentScale = ContentScale.Crop)
+        Image(image, contentDescription = photo.name, modifier = Modifier.size(396.dp).clip(RoundedCornerShape(18.dp)), contentScale = ContentScale.Crop, alpha = a)
         Spacer(Modifier.height(14.dp))
-        BasicText(photo.name, style = Type.polaroidName, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        BasicText(photo.phrase, style = Type.polaroidPhrase, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        BasicText(photo.name, style = Type.polaroidName.copy(color = Kiln.ink.copy(alpha = a)), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        BasicText(photo.phrase, style = Type.polaroidPhrase.copy(color = Kiln.polaroidText.copy(alpha = a)), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

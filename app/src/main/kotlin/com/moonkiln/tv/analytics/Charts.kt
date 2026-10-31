@@ -106,7 +106,7 @@ private fun DrawScope.xLabels(tm: TextMeasurer, dates: List<String>, slot: Float
 // Sessions by channel, stacked bars with 4 px rounded tops and 2 px gaps between segments.
 @Composable
 fun ChannelChart(rows: List<ChannelRow>, width: Int, progress: Float, hover: Int) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
         val w = width.toFloat()
         val x1 = w - 6f
@@ -148,7 +148,7 @@ fun ChannelChart(rows: List<ChannelRow>, width: Int, progress: Float, hover: Int
 // Social trends: three lines, each on its own scale, drawn left to right as progress runs.
 @Composable
 fun TrendChart(rows: List<SocialRow>, width: Int, progress: Float, hover: Int) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
         val w = width.toFloat()
         val x1 = w - 6f
@@ -218,7 +218,7 @@ fun TrendChart(rows: List<SocialRow>, width: Int, progress: Float, hover: Int) {
 // Google search: impressions, clicks and orders from search as overlaid bars on one axis.
 @Composable
 fun SearchChart(rows: List<SearchRow>, width: Int, progress: Float, hover: Int) {
-    val tm = rememberTextMeasurer()
+    val tm = rememberTextMeasurer(cacheSize = 64)
     Canvas(Modifier.width(width.dp).height(CHART_H.dp)) {
         val w = width.toFloat()
         val x1 = w - 6f

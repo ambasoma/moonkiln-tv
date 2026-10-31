@@ -44,6 +44,29 @@ Memory check (the budget is under 40 MB resident for the launcher process):
 adb -s 192.168.0.11:5555 shell dumpsys meminfo com.moonkiln.tv | grep "TOTAL PSS"
 ```
 
+Measured on 31 Oct 2026 with the v1 release build (`dumpsys meminfo`, PSS):
+
+| State | Launcher PSS | TV free RAM |
+|---|---|---|
+| Google launcher as home, before any removal | 32.1 MB (ours, idle) | 193 MB |
+| Fresh home screen after boot, nine packages removed | 37.5 MB | 278 MB |
+| After the numbers page has been used | about 50 MB | |
+| Behind the PS5 picture (the TV drops the GPU caches) | 47 to 51 MB | 290 MB |
+
+The 40 MB line holds for the home screen itself; the numbers page costs about 10 MB more (chart text and GPU caches) and that stays until the launcher leaves the screen. Both figures include about 14 MB of shared code pages and 11 MB of shared system pages, so the private cost is roughly half of what the total says.
+
+Motion, from `dumpsys gfxinfo` after each pass (this chip renders at 60 Hz, one frame is 16.7 ms):
+
+| Pass | Median frame | 90th percentile |
+|---|---|---|
+| Focus moves on the home row, warm | 11 ms | 28 ms |
+| Focus moves right after a cold start | 29 ms | 48 ms |
+| Page change into the numbers page | 10 ms, one 700 ms stall on the first build of the page | |
+| Numbers page: count-up, expand, crosshair | 30 ms | 77 ms |
+| Ambient, continuous | 11 to 13 ms | 13 to 34 ms |
+
+Lessons that shaped the code: a full-screen alpha fade allocates an offscreen buffer that Skia keeps cached (11 MB on the numbers page), so the page change draws a flat scrim over the content instead; a gradient scrim costs a 36 ms frame on this GPU; the polaroid crossfade applies alpha per element rather than to its layer; a graphics layer around the whole screen is re-recorded on every focus change, so the 12 px rise is an offset; the chart text measurer needs a cache larger than the default eight. The TV ships with the animator scale at 0.5 and Compose honours it, so `Motion.ms` divides by the scale to keep the canvas timings.
+
 Grants the launcher needs, once per install of a new signing key (adb, no dialogs on this set):
 
 ```
@@ -59,7 +82,9 @@ adb -s 192.168.0.11:5555 shell settings put secure screensaver_enabled 1
 adb -s 192.168.0.11:5555 shell cmd package set-home-activity com.moonkiln.tv/.MainActivity
 ```
 
-Then press Home on the remote and check it lands on the launcher, switch to the PS5 from the tile and check HDMI 1 shows it, reboot and check both again. Only after that are the Google launcher packages removed (see the end of this file).
+The preference is recorded, but on this build HOME keeps resolving to the Google launcher until that package is gone (the system prefers its own home over a sideloaded one), so the real switch is `pm uninstall --user 0 com.google.android.tvlauncher`, after which HOME resolves to ours and the Home key lands on it. Done on 31 Oct 2026, then verified: PS5 tile switches HDMI 1 with CEC on, reboot lands on the launcher.
+
+Two things the canvas assumes that this build cannot do: a long press on Home sends `ALL_APPS` pinned to the system Settings package (`pkg=com.android.tv.settings`), so it never reaches the launcher and the hint strip says "Ambient for the screensaver" instead; and `com.google.android.youtube.tv.recommendations` was never installed for user 0, so the removal list is eight packages in practice.
 
 ### The PS5 bounce (CEC)
 

@@ -326,8 +326,9 @@ private fun Tooltip(tip: TooltipRows, modifier: Modifier) {
     Column(
         modifier.graphicsLayer { translationX = -size.width / 2f }
             .background(Kiln.pillRest, RoundedCornerShape(12.dp)).border(1.dp, Kiln.field, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        // Seven channel rows must fit inside the 170 px plot, so the rows sit tight.
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (tip.title != null) BasicText(tip.title, style = Type.tipTotal)

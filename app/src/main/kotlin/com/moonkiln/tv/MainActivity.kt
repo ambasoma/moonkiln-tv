@@ -5,12 +5,10 @@ import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.offset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -81,15 +79,27 @@ class MainActivity : ComponentActivity() {
                         Brush.radialGradient(listOf(Kiln.cardLift, Kiln.screen, Kiln.screen), center = androidx.compose.ui.geometry.Offset(230f, 0f), radius = 900f),
                     ),
                 ) {
-                    AnimatedContent(
-                        targetState = screen,
-                        transitionSpec = {
-                            (fadeIn(Motion.tween(Motion.MEDIUM, delay = Motion.MEDIUM)) + slideInVertically(Motion.tween(Motion.MEDIUM, delay = Motion.MEDIUM)) { 12 })
-                                .togetherWith(fadeOut(Motion.tween(Motion.MEDIUM)) + slideOutVertically(Motion.tween(Motion.MEDIUM)) { -12 })
+                    // The screen change: 350 ms out (a scrim of the background rises over the content, which
+                    // drifts up 12 px), then 350 ms in. Drawing the scrim instead of fading the whole screen's
+                    // alpha keeps the chip from allocating a full-screen offscreen buffer for every transition.
+                    val veil = remember { Animatable(0f) }
+                    var shown by remember { mutableStateOf(screen) }
+                    LaunchedEffect(screen) {
+                        if (shown != screen) {
+                            veil.animateTo(1f, Motion.tween(Motion.MEDIUM))
+                            shown = screen
+                            veil.animateTo(0f, Motion.tween(Motion.MEDIUM))
+                        }
+                    }
+                    val leaving = shown != screen
+                    Box(
+                        // An offset, not a graphics layer: a layer around the whole screen would be re-recorded
+                        // on every focus change inside it.
+                        Modifier.fillMaxSize().offset {
+                            androidx.compose.ui.unit.IntOffset(0, ((if (leaving) -12f else 12f) * veil.value).roundToInt())
                         },
-                        label = "screen",
-                    ) { s ->
-                        when (s) {
+                    ) {
+                        when (shown) {
                             Screen.Home -> {
                                 LaunchedEffect(Unit) { runCatching { homeFocus.ps5.requestFocus() } }
                                 HomeScreen(today, ps5, network, apps, switching, homeFocus, actions)
@@ -101,6 +111,10 @@ class MainActivity : ComponentActivity() {
                                 InputsScreen(inputs) { input -> switchInput(input.id) }
                             }
                         }
+                    }
+                    if (veil.value > 0f) {
+                        // Flat ink: a gradient fill per frame was a 36 ms frame on this GPU.
+                        Canvas(Modifier.fillMaxSize()) { drawRect(Kiln.screen, alpha = veil.value) }
                     }
                     OpeningPill(opening, Modifier.align(Alignment.BottomCenter).padding(bottom = 84.dp))
                 }
@@ -119,6 +133,8 @@ class MainActivity : ComponentActivity() {
 
     private fun go(target: Screen) {
         if (target == Screen.Home) analytics.collapse()
+        // Leaving ambient drops its decoded photos; the home screen does not need them.
+        if (screen == Screen.Ambient && target != Screen.Ambient) com.moonkiln.tv.data.Images.evictAssets()
         screen = target
     }
 

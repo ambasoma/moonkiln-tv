@@ -19,9 +19,9 @@ import java.net.URL
 import java.security.MessageDigest
 
 // A deliberately small image loader: no third party library, every bitmap decoded at the size it is
-// drawn, a 3 MB memory cache and the files kept in the app cache folder for the next time.
+// drawn, a 2 MB memory cache and the files kept in the app cache folder for the next time.
 object Images {
-    private val memory = object : LruCache<String, Bitmap>(3 * 1024 * 1024) {
+    private val memory = object : LruCache<String, Bitmap>(2 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
 

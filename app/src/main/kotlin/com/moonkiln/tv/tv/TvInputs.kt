@@ -76,7 +76,7 @@ class TvInputs(private val context: Context) {
                 }
                 TvInput(info.id, label, readPower(info.id))
             }
-            .sortedBy { it.id }
+            .sortedWith(compareBy({ !it.label.startsWith("HDMI") }, { it.label }))
     }
 
     // Switching is one VIEW intent on the passthrough URI; Live TV renders the picture and the set sends

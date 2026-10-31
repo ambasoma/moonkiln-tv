@@ -19,6 +19,8 @@ private val HIDDEN_PACKAGES = setOf(
     "com.moonkiln.tv",
     LIVE_TV_PACKAGE,
     "com.google.android.tvlauncher",
+    // The remote's firmware updater stays installed but has no place on the row.
+    "com.airoha.ble.ota",
 )
 
 fun installedApps(context: Context, iconPx: Int): List<LaunchableApp> {

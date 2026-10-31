@@ -135,7 +135,9 @@ fun HomeScreen(
         }
         Spacer(Modifier.weight(1f))
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            BasicText("OK selects · Back returns · hold Home for ambient", style = Type.hint)
+            // The canvas says "hold Home for ambient", but on this build a long press on Home sends ALL_APPS pinned
+            // to the system Settings package, so it can never reach the launcher. The Ambient tile is the way in.
+            BasicText("OK selects · Back returns · Ambient for the screensaver", style = Type.hint)
             BasicText("handmade in Bangalore, one at a time", style = Type.hint)
         }
     }
