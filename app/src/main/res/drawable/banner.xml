@@ -1,8 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Placeholder 320x180 banner: cream field, terracotta mark. Replaced by the designed banner later. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="320dp" android:height="180dp"
-    android:viewportWidth="320" android:viewportHeight="180">
-    <path android:fillColor="#F5EFE2" android:pathData="M0,0h320v180H0z" />
-    <path android:fillColor="#B5713C" android:pathData="M160,54 a36,36 0 1,0 0.1,0z" />
+    android:width="320dp" android:height="180dp" android:viewportWidth="320" android:viewportHeight="180">
+    <path android:pathData="M0 0h320v180H0z" android:fillColor="#1C1A17"/>
+    <path android:pathData="M212 90A52 52 0 0 1 148 38a44 44 0 1 0 64 52z" android:fillColor="#F4EFE2"/>
+    <path android:pathData="M60 112h8v-28l12 18 12-18v28h8V66h-8l-12 18-12-18h-8z" android:fillColor="#8FB544"/>
 </vector>

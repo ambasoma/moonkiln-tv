@@ -1,6 +1,8 @@
 <resources>
+    <!-- The window is the kiln ink of the design so nothing cool or bright flashes before Compose draws. -->
     <style name="Theme.MoonKilnTv" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#F5EFE2</item>
+        <item name="android:windowBackground">#1C1A17</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 </resources>
