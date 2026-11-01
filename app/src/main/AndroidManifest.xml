@@ -53,8 +53,10 @@
         </activity>
 
         <!-- Ambient mode as the system screensaver: product photos, the clock and what is left to ship. -->
+        <!-- Priority 999: BOOT_COMPLETED is an ordered broadcast, and the TV only lets this receiver win the
+             boot screen if it runs before the MediaTek TV service's own receiver (see StartReceiver). -->
         <receiver android:name=".StartReceiver" android:exported="true">
-            <intent-filter>
+            <intent-filter android:priority="999">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>

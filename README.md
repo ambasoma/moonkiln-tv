@@ -115,7 +115,21 @@ adb -s 192.168.0.11:5555 shell settings put secure screensaver_enabled 1
 adb -s 192.168.0.11:5555 shell cmd package set-home-activity com.moonkiln.tv/.MainActivity
 ```
 
-The preference is recorded, but on this build HOME keeps resolving to the Google launcher until that package is gone (the system prefers its own home over a sideloaded one), so the real switch is `pm uninstall --user 0 com.google.android.tvlauncher`, after which HOME resolves to ours and the Home key lands on it. Done on 31 Oct 2026, then verified: PS5 tile switches HDMI 1 with CEC on, reboot lands on the launcher.
+The preference is recorded, but on this build HOME keeps resolving to the Google launcher until that package is gone (the system prefers its own home over a sideloaded one), so the real switch is `pm uninstall --user 0 com.google.android.tvlauncher`, after which HOME resolves to ours and the Home key lands on it. Done on 31 Oct 2026, then verified: PS5 tile switches HDMI 1 with CEC on.
+
+### Cold boot: why the TV used to come up on Live TV, and the fix
+
+The MediaTek TV service (`com.mediatek.tv.service`, class `LiveTVLauncher`) answers `BOOT_COMPLETED` by forcing Live TV on top about 0.2 s later with `ACTION_REQUEST_TOP_RESUME`, often before the real home activity has even been launched. About 4 s after that Live TV tunes HDMI 1, and that tune sends a CEC power-on to the PS5, so a cold boot woke the PS5 and the PS5 then held the screen. The feature is switched on by the read-only property `ro.vendor.mtk.auto.enter.livetv` (hidden from `getprop`), so it cannot be turned off directly. The 31 Oct reboot check only reached the launcher because that service was crash-looping at the time (see the partnercustomizer note below).
+
+The lever, found by disassembling TvServices.apk on 1 Nov 2026: the forced launch is skipped when `Settings.Secure.tv_user_setup_complete` reads 0 (`isLauncherAvaiable` needs both setup flags). So the device runs with:
+
+```
+adb -s 192.168.0.11:5555 shell settings put secure tv_user_setup_complete 0
+```
+
+`user_setup_complete` stays 1 (the framework reads that one). Verified 1 Nov 2026: a cold boot with the PS5 resting lands on the launcher with no Routing Change and no CEC wake, nothing from the setup wizard or the assistant started, no notifications. The string is also read by `com.google.android.tungsten.setupwraith` (Google's TV setup, disabled on this set), `com.google.android.katniss` and `com.mediatek.wwtv.setupwizard`, so if a setup nag ever appears, put the flag back to 1 and this boot jump returns.
+
+Belt and braces: `StartReceiver` also brings the home screen back 2 s and 6 s after `BOOT_COMPLETED` unless the PS5 input reads connected (priority 999 on the receiver). On its own that was not enough: the broadcast reaches the launcher 11 to 47 s after it is posted on this chip, long after the PS5 has been woken, and the PS5 bounce then wins.
 
 Two things the canvas assumes that this build cannot do: a long press on Home sends `ALL_APPS` pinned to the system Settings package (`pkg=com.android.tv.settings`), so it never reaches the launcher and the hint strip says "Ambient for the screensaver" instead; and `com.google.android.youtube.tv.recommendations` was never installed for user 0, so the removal list is eight packages in practice.
 
@@ -191,9 +205,11 @@ Every strategy stays quiet when the launcher handed the screen over itself (the 
 
 ## Removing the apps Amba does not need, and restoring them
 
-Removed for user 0 only (`pm uninstall --user 0 <package>`), which keeps the APKs on the system partition: `com.google.android.tvlauncher`, `com.google.android.tvrecommendations`, `com.google.android.youtube.tv.recommendations`, `com.google.android.backdrop`, `com.google.android.leanbacklauncher.partnercustomizer`, `com.google.android.videos`, `com.google.android.youtube.tvmusic`, `com.google.android.play.games`, `com.Smartdevice.emanual`.
+Removed for user 0 only (`pm uninstall --user 0 <package>`), which keeps the APKs on the system partition: `com.google.android.tvlauncher`, `com.google.android.tvrecommendations`, `com.google.android.youtube.tv.recommendations`, `com.google.android.backdrop`, `com.google.android.videos`, `com.google.android.youtube.tvmusic`, `com.google.android.play.games`, `com.Smartdevice.emanual`.
 
-Kept: `com.mediatek.wwtv.tvcenter` and `com.mediatek.tvinput` (the only HDMI path), `com.android.tv.settings`, `com.google.android.gms`, `com.android.vending` (to reinstall anything later), `com.google.android.apps.mediashell` (Cast), `com.google.android.katniss` (speech for the remote mic, v2), `com.android.bluetooth`, `com.airoha.ble.ota` (remote firmware), and the system packages.
+**Never remove `com.google.android.leanbacklauncher.partnercustomizer`** (Skyworth's TvLauncherCustomizer_SKW). It was removed on 31 Oct 2026 and restored on 1 Nov 2026. It owns the `tvlauncher.widget` content provider, and `com.mediatek.tv.service` notifies that provider every time the network comes up. Without it the MediaTek TV service crashes about six times a second, `system_server` saturates the CPU, and the TV stops answering the PS5's <Text View On> and <Active Source>, so the PS5 picture never appears. It has no Home activity, so keeping it does not affect the launcher.
+
+Kept: `com.mediatek.wwtv.tvcenter` and `com.mediatek.tvinput` (the only HDMI path), `com.google.android.leanbacklauncher.partnercustomizer` (see above), `com.android.tv.settings`, `com.google.android.gms`, `com.android.vending` (to reinstall anything later), `com.google.android.apps.mediashell` (Cast), `com.google.android.katniss` (speech for the remote mic, v2), `com.android.bluetooth`, `com.airoha.ble.ota` (remote firmware), and the system packages.
 
 To bring anything back:
 
