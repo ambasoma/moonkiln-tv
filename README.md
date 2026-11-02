@@ -194,20 +194,18 @@ Starts the Claude Code session inside tmux as `cc-claude-on-tv` with Remote Cont
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
+    P["my phone"] -- "Remote Control" --> C
+    P -- "announcements" --> S
     subgraph MINI["Mac mini"]
-        W[("warehouse<br/>DuckDB marts")] --> S["today_server.py<br/>:9470, LAN only, bearer token"]
-        C["Claude Code session<br/>(tmux, Remote Control)"] -- "hooks: prompt, tool, answer" --> S
-        S -- "tmux send-keys" --> C
-        V["Kokoro voice<br/>(say.py)"] --> S
+        C["Claude Code session<br/>(tmux)"] -- "hooks" --> S["today_server.py<br/>LAN only, bearer token"]
+        W[("warehouse<br/>(DuckDB)")] --> S
+        V["Kokoro voice"] --> S
     end
-    SH["Shopify Admin API<br/>(today's live orders)"] --> S
-    S -- "/today, /dashboard" --> T["Moon Kiln TV<br/>Kotlin + Compose on the TV"]
-    S -- "/bridge/events long-poll" --> T
-    T -- "/bridge/prompt" --> S
-    P["phone"] -- "Remote Control" --> C
-    P -- "/announce" --> S
-    T -- "HDMI 1 switch, CEC" --> PS5["PS5"]
+    SH["Shopify<br/>(today's orders)"] --> S
+    S -- "today, dashboard, bridge events" --> T["Moon Kiln TV<br/>(the launcher)"]
+    T -- "prompts" --> S
+    T -- "HDMI 1, CEC" --> PS5["PS5"]
 ```
 
 The TV does as little as it can. The mini computes every number server side, caches the answers (a minute for today, ten for the dashboard) and reads the warehouse read-only for the milliseconds a query takes, so the nightly rebuild is never blocked. The launcher polls `/today` for the day (a new latest sale is what brings up the order toast) and long-polls one bridge for everything else live: Claude's prompts, tool calls and answers, and announcements. A prompt from the TV is typed into the tmux session with `send-keys`, so it is no different from one typed at the keyboard.
