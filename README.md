@@ -402,7 +402,7 @@ To go back to the Google launcher: reinstall `com.google.android.tvlauncher` and
 
 ## License
 
-MIT for the code, see [LICENSE](LICENSE). The Moon Kiln name and logo, the photos of the pieces and the screenshots are mine and stay all rights reserved; the two fonts are under the SIL Open Font License (`licences/`).
+MIT for the code, see [LICENSE](LICENSE). The Moon Kiln name and logo, the photos of the pieces and the screenshots are mine and stay all rights reserved, and the two fonts are under the SIL Open Font License; [NOTICE](NOTICE) has the exact files.
 
 The fox on the screensaver is Mr Fox. One of a kind, always.
 

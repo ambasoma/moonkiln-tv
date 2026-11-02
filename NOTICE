@@ -1,0 +1,10 @@
+Moon Kiln TV: what the MIT licence in LICENSE does not cover
+
+- The Moon Kiln name and logo (app/src/main/res/drawable-nodpi/mk_logo_cream.png,
+  docs/media/logo-day.png, docs/media/logo-night.png), the photos of Moon Kiln
+  pieces (app/src/main/assets/photos/) and the screenshots and recordings in
+  docs/media/. These are all rights reserved, Copyright (c) 2026 Amba.
+- The controller image (app/src/main/res/drawable-nodpi/dualsense.png), which
+  belongs to its owner.
+- The bundled fonts, Grandstander and Hanken Grotesk, which are under the SIL
+  Open Font License 1.1 (see licences/).
