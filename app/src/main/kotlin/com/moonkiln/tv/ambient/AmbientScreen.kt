@@ -65,12 +65,12 @@ val AMBIENT_PHOTOS = listOf(
     AmbientPhoto("photos/tuxedo-kitty.jpg", "Tuxedo Kitty", "only classy in looks"),
     AmbientPhoto("photos/happy-duck.jpg", "Happy Duck", "sculpted, painted and named by hand"),
     AmbientPhoto("photos/charlie.jpg", "Charlie", "handmade in Bengaluru, one at a time"),
-    AmbientPhoto("photos/jiji.jpg", "Jiji", "pals with jobs and faces"),
+    AmbientPhoto("photos/midnight-cat.jpg", "Midnight Cat", "pals with jobs and faces"),
     AmbientPhoto("photos/mr-fox.jpg", "Mr Fox", "one of a kind always"),
     AmbientPhoto("photos/mr-ribbit.jpg", "Mr Ribbit", "only classy in looks"),
     AmbientPhoto("photos/shiba-inu.jpg", "Shiba Inu", "sculpted, painted and named by hand"),
     AmbientPhoto("photos/sunny-bunny.jpg", "Sunny Bunny", "handmade in Bengaluru, one at a time"),
-    AmbientPhoto("photos/totoro.jpg", "Totoro", "pals with jobs and faces"),
+    AmbientPhoto("photos/forest-spirit.jpg", "Forest Spirit", "pals with jobs and faces"),
     AmbientPhoto("photos/mushroom-pal.jpg", "Mushroom Pal", "one of a kind always"),
 )
 
